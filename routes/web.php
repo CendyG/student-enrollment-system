@@ -178,4 +178,5 @@ Route::group(['namespace' => 'MyParent','middleware' => 'my_parent',], function(
 
 
 Route::get('enroll', [StudentRecordController::class, 'create_public'])->name('students.create_public');
+Route::post('enroll_verification', [StudentRecordController::class, 'send_verification_code'])->name('students.send_verification');
 Route::post('enroll_now', [StudentRecordController::class, 'store_public'])->name('students.store_public');

@@ -151,10 +151,41 @@
         });
     }
 
+    var has_mobile_number_verification_code = false;
+
+    function sendVerificationCode() {
+        $.post("/enroll_verification",
+            {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                mobile_number: $('#personal_phone_number').val()
+            },
+            function(data, status){
+                // alert("Data: " + data + "\nStatus: " + status);
+                has_mobile_number_verification_code = true;
+            });
+    }
+
+    $('#verification_submit').click(function() {
+        if ($('#modal_verification_code').val().trim(' ') == '') {
+            alert('Please enter verification code!')
+        } else {
+            $('#verification_code').val($('#modal_verification_code').val());
+            $('#modal_verification_code').val('')
+            $('form#ajax-reg').trigger('submit');
+        }
+    });
+
     $('form#ajax-reg').on('submit', function(ev){
         ev.preventDefault();
-        submitForm($(this), 'store');
-        $('#ajax-reg-t-0').get(0).click();
+        if (!has_mobile_number_verification_code) {
+            $('#verificationModal').modal('toggle');
+            sendVerificationCode();
+        } else {
+            has_mobile_number_verification_code = false;
+            submitForm($(this), 'store');
+            $('#ajax-reg-t-0').get(0).click();
+            $('#verificationModal').modal('toggle');
+        }
     });
 
     $('form.ajax-pay').on('submit', function(ev){

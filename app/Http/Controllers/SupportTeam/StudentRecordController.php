@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use App\Models\EnrollmentVerification;
+use App\User;
 
 class StudentRecordController extends Controller
 {
@@ -40,6 +42,21 @@ class StudentRecordController extends Controller
         return back()->with('flash_success', __('msg.p_reset'));
     }
 
+    public function send_verification_code()
+    {
+        $mobile_number = request()->get('mobile_number');
+
+        $code = strtoupper(Str::random(10));
+
+        EnrollmentVerification::where(['mobile_number' => $mobile_number])->delete();
+        EnrollmentVerification::create(['mobile_number' => $mobile_number, 'code' => $code]);
+
+        $message = 'Your enrollment verification is ' . $code;
+        //$to = $mobile_number; UNCOMMENT THIS LINE AFTER FREE SUBSCRIPTION HAS BEEN UPGRADE ON SMSHERN
+        $to = '09057013361'; // REMOVE THIS LINE IF CODE ABOVE IS UNCOMMENTED, for smshern free subscription it can only send to the account mobile number
+        SmsHern::sendSms($message, $to);
+    }
+
     public function create()
     {
         $data['my_classes'] = $this->my_class->all();
@@ -62,6 +79,17 @@ class StudentRecordController extends Controller
 
     public function store_public(StudentRecordCreate $req)
     {
+        $verification_code = request()->get('verification_code');
+        $mobile_number = request()->get('phone');
+        $enrollment_verification = EnrollmentVerification::where(['mobile_number' => $mobile_number])->first();
+        if (!$enrollment_verification || ($enrollment_verification && $enrollment_verification->code != $verification_code)) {
+            return response()->json([
+                "message" => "The given data was invalid.",
+                "errors" => [
+                    "verification_code" => ["Invalid sms verification code."]
+                ]], 422);
+        }
+
        $data =  $req->only(Qs::getUserRecord());
        $sr =  $req->only(Qs::getStudentData());
 
@@ -70,21 +98,25 @@ class StudentRecordController extends Controller
         $ct = ($ct == 'S') ? 'SS' : $ct;*/
 
         $data['user_type'] = 'student';
-        $data['name'] = ucwords($req->name);
-        $data['code'] = strtoupper(Str::random(10));
+        $data['name'] = ucwords(request()->get('first_name')) . " " . ucwords(request()->get('middle_name')) . " " . ucwords(request()->get('last_name'));
+        $data['first_name'] = request()->get('first_name');
+        $data['middle_name'] = request()->get('middle_name');
+        $data['last_name'] = request()->get('last_name');
+        $data['code'] = $enrollment_verification->code;
         $data['password'] = Hash::make('student');
         $data['photo'] = Qs::getDefaultUserImage();
         $adm_no = $req->adm_no;
         // $data['username'] = strtoupper(explode(' ', $req->name)[0].$sr['year_admitted'].($adm_no ?: mt_rand(1000, 99999)));
         $data['username'] = $adm_no;
 
-        if($req->hasFile('birth_certificate')) {
-            $photo = $req->file('birth_certificate');
-            $f = Qs::getFileMetaData($photo);
-            $f['name'] = 'birth_certificate.' . $f['ext'];
-            $f['path'] = $photo->storeAs(Qs::getUploadPath('student').$data['code'], $f['name']);
-            $data['birth_certificate'] = asset('storage/' . $f['path']);
-        }
+        // if($req->hasFile('birth_certificate')) {
+        //     $photo = $req->file('birth_certificate');
+        //     $f = Qs::getFileMetaData($photo);
+        //     $f['name'] = 'birth_certificate.' . $f['ext'];
+        //     $f['path'] = $photo->storeAs(Qs::getUploadPath('student').$data['code'], $f['name']);
+        //     $data['birth_certificate'] = asset('storage/' . $f['path']);
+        // }
+        $data['birth_certificate'] = request()->get('birth_certificate');
 
         if($req->hasFile('report_card')) {
             $photo = $req->file('report_card');
@@ -101,9 +133,12 @@ class StudentRecordController extends Controller
         $sr['session'] = Qs::getSetting('current_session');
 
         $student = $this->student->createRecord($sr); // Create Student
+        $enrollment_verification->delete();
+
+        // todo add parents (father, mother, guardian)
 
         if ($student) {
-            $message = 'Hello ' . $data['name'] . ', your username: ' . $data['username'] . ', password: student' . ', verification code is ' . $data['code'];
+            $message = 'Hello ' . $data['name'] . ', you are now enrolled. Your username: ' . $data['username'] . ', password: student';
             //$to = $user->phone; UNCOMMENT THIS LINE AFTER FREE SUBSCRIPTION HAS BEEN UPGRADE ON SMSHERN
             $to = '09057013361'; // REMOVE THIS LINE IF CODE ABOVE IS UNCOMMENTED, for smshern free subscription it can only send to the account mobile number
             SmsHern::sendSms($message, $to);
